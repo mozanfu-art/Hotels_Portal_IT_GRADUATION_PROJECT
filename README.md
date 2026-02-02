@@ -1,0 +1,1 @@
+This repository contains my Information Technology graduation project, a cross-platform Hotels Portal application developed using Flutter and Firebase, designed to demonstrate practical skills in mobile application development, cloud-based backend services, and system integration.
