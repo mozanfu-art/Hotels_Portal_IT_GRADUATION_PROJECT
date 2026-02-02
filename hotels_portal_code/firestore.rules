@@ -1,0 +1,147 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isGuest() {
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/guests/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isMinistryAdmin() {
+      return isAdmin() &&
+             get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.hotelId == null;
+    }
+
+    function isHotelAdmin() {
+      return isAdmin() &&
+             get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.hotelId != null;
+    }
+
+    function getUserHotelId() {
+      return get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.hotelId;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isApprovedGuest() {
+      return isGuest();
+    }
+
+    // Guests collection
+    match /guests/{guestId} {
+      // Guests can read/write their own data if approved
+      allow read, write: if isApprovedGuest() || isAdmin();
+      // Ministry admin can read all guests
+      allow read: if isMinistryAdmin();
+    }
+
+    // Guests/{guestId}/notifications/{notificationId}
+    match /guests/{guestId}/notifications/{notificationId} {
+      allow read, write: if isApprovedGuest() || isAdmin();
+    }
+
+    // Guests/{guestId}/bookings/{bookingId}
+    match /guests/{guestId}/bookings/{bookingId} {
+      allow read, write: if isApprovedGuest() || isAdmin();
+    }
+
+    // Guests/{guestId}/reviews/{reviewId}
+    match /guests/{guestId}/reviews/{reviewId} {
+      allow read, write: if isApprovedGuest() || isAdmin();
+    }
+
+    // Admins collection
+    match /admins/{adminId} {
+      // Admins can read/write their own data
+      allow read, write: if isOwner(adminId) || isMinistryAdmin();
+      // Ministry admin can manage all admins
+      allow read, write: if isMinistryAdmin();
+    }
+
+    // Admins/{adminId}/notifications/{notificationId}
+    match /admins/{adminId}/notifications/{notificationId} {
+      allow read, write: if isOwner(adminId) || isMinistryAdmin();
+    }
+
+    // Hotels collection
+    match /hotels/{hotelId} {
+      // Everyone can read hotels
+      allow read: if true;
+      // Only admins can create/update hotels
+      allow create: if isAdmin();
+      allow update: if isMinistryAdmin() || (isHotelAdmin() && getUserHotelId() == hotelId);
+      allow delete: if isMinistryAdmin();
+    }
+
+    // Hotels/{hotelId}/rooms/{roomId}
+    match /hotels/{hotelId}/rooms/{roomId} {
+      allow read: if true;
+      allow write: if isMinistryAdmin() || (isHotelAdmin() && getUserHotelId() == hotelId);
+    }
+
+    // Hotels/{hotelId}/bookings/{bookingId}
+    match /hotels/{hotelId}/bookings/{bookingId} {
+      allow read: if true;
+      allow write: if isApprovedGuest() || isAdmin();
+    }
+
+    // Hotels/{hotelId}/reviews/{reviewId}
+    match /hotels/{hotelId}/reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isApprovedGuest();
+      allow update, delete: if isApprovedGuest() && resource.data.guestId == request.auth.uid;
+    }
+
+    // Bookings collection
+    match /bookings/{bookingId} {
+      // Guests can read/write their own bookings
+      allow read: if isApprovedGuest() && resource.data.guestId == request.auth.uid;
+      allow create: if isApprovedGuest();
+      allow update: if isApprovedGuest() && resource.data.guestId == request.auth.uid;
+      // Admins can read all bookings
+      allow read: if isAdmin();
+      // Hotel admins can read/update bookings for their hotel
+      allow read, update: if isHotelAdmin() && resource.data.hotelId == getUserHotelId();
+      // Ministry admin can manage all bookings
+      allow read, write: if isMinistryAdmin();
+    }
+
+    // Reviews collection (global reviews)
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isApprovedGuest();
+      allow update, delete: if isApprovedGuest() && resource.data.guestId == request.auth.uid;
+    }
+
+    // Reports collection
+    match /reports/{reportId} {
+      // Only admins can access reports
+      allow read, write: if isAdmin();
+    }
+
+    // Help Center collection
+    match /help_center/{helpId} {
+      allow read: if true;
+      allow create: if isApprovedGuest() || isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // Help Center/{helpId}/responses/{responseId}
+    match /help_center/{helpId}/responses/{responseId} {
+      allow read: if true;
+      allow create: if isApprovedGuest() || isAdmin();
+      allow update, delete: if isAdmin();
+    }
+  }
+}
